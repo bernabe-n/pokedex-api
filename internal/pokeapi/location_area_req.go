@@ -7,9 +7,26 @@ import (
 	"encoding/json"
 )
 
-func (c *Client) ListLocationAreas() (LocationAreaResp, error) {
+func (c *Client) ListLocationAreas(pageURL *string) (LocationAreaResp, error) {
 	endpoint := "/location-area"
 	fullURL := baseURL + endpoint
+
+	if pageURL != nil {
+		fullURL = *pageURL
+	}
+
+	data, ok :=c.cache.Get(fullURL)
+	if ok {
+		fmt.Printf("cache hit for %s\n", fullURL)
+		locationAreaResp := LocationAreaResp{}
+		err := json.Unmarshal(data, &locationAreaResp)
+		if err != nil {
+		return LocationAreaResp{}, err
+		}
+
+		return locationAreaResp, nil
+	}
+	fmt.Printf("cache miss for %s\n", fullURL)
 
 	req, err := http.NewRequest("GET", fullURL, nil)
 	if err != nil {
@@ -26,7 +43,7 @@ func (c *Client) ListLocationAreas() (LocationAreaResp, error) {
 		return LocationAreaResp{}, fmt.Errorf("API request failed with status code: %d", resp.StatusCode)
 	}
 
-	data, err := io.ReadAll(resp.Body)
+	data, err = io.ReadAll(resp.Body)
 	if err != nil {
 		return LocationAreaResp{}, err
 	}
@@ -36,6 +53,8 @@ func (c *Client) ListLocationAreas() (LocationAreaResp, error) {
 	if err != nil {
 		return LocationAreaResp{}, err
 	}
+
+	c.cache.Add(fullURL, data)
 
 	return locationAreaResp, nil
 }
