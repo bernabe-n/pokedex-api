@@ -1,9 +1,13 @@
 package pokecache
 
-import "time"
+import (
+	"sync"
+	"time"
+)
 
 type Cache struct {//Defines a struct named Cache
 	cache map[string]cacheEntry //It has one field, cache: a map, key: string, value: cacheEntry
+	mux *sync.Mutex //A mutex to handle concurrent access to the cache, allowing multiple readers or one writer at a time.
 }
 
 type cacheEntry struct {//Represents one item in the cache
@@ -14,12 +18,15 @@ type cacheEntry struct {//Represents one item in the cache
 func NewCache(interval time.Duration) Cache { //Function that creates a new cache, Takes interval (how often cleanup runs), Returns a Cache value (not a pointer important).
 	c := Cache{ //Creates a new Cache
 		cache: make(map[string]cacheEntry), //Initializes the map using make
+		mux: &sync.Mutex{}, //Initializes the mutex
 	}
 	go c.reapLoop(interval) //Starts a goroutine that runs the reapLoop method, which will periodically clean up old entries based on the provided interval.
 	return c
 }
 
 func (c *Cache) Add(key string, val []byte) {//Method to add an entry to the cache, takes a key and value (as bytes), c is a pointer receiver, meaning it modifies the Cache instance it is called on.
+	c.mux.Lock() //Locks the mutex to ensure exclusive access to the cache while adding an entry, preventing
+	defer c.mux.Unlock() //Unlocks the mutex after the function returns, allowing other operations to access the cache.
 	c.cache[key] = cacheEntry{ //Adds a new entry to the cache map with the provided key and value. The value is wrapped in a cacheEntry struct that also records the current time as createdAt.
 		val:       val,
 		createdAt: time.Now().UTC(),
@@ -27,6 +34,9 @@ func (c *Cache) Add(key string, val []byte) {//Method to add an entry to the cac
 }
 
 func (c *Cache) Get(key string) ([]byte, bool) { //Method to retrieve an entry from the cache, takes a key, returns the value (as bytes) and a boolean indicating if it was found.
+	c.mux.Lock() //Locks the mutex to ensure exclusive access to the cache while retrieving an entry.
+	defer c.mux.Unlock() //Unlocks the mutex after the function returns, allowing other operations to access the cache.
+	
 	cacheE, ok := c.cache[key]
 	return cacheE.val, ok
 }
@@ -39,6 +49,9 @@ func (c *Cache) reapLoop(interval time.Duration) { //Method that runs in a loop 
 }
 
 func (c *Cache) reap(interval time.Duration) { //Method to remove old entries from the cache, takes the interval as an argument.
+	c.mux.Lock() //Locks the mutex to ensure exclusive access to the cache while cleaning up entries.
+	defer c.mux.Unlock() //Unlocks the mutex after the function returns, allowing other operations to access the cache.
+
 	timeAgo := time.Now().UTC().Add(-interval)
 	for k, v := range c.cache {
 		if v.createdAt.Before(timeAgo) {
